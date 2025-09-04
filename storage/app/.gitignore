@@ -1,3 +1,4 @@
 *
 !public/
+!credentials.example.json
 !.gitignore
