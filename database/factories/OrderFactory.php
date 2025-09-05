@@ -12,7 +12,7 @@ class OrderFactory extends Factory
     public function definition(): array
     {
         return [
-            'order_number' => $this->faker->unique()->numberBetween(10000, 99999),
+            'order_number' => $this->faker->unique()->numberBetween(10000, 10014),
             'customer_name' => $this->faker->name(),
             'total' => $this->faker->numberBetween(500, 10000),
             'status' => $this->faker->randomElement([
