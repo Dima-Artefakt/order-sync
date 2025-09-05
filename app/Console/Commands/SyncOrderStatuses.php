@@ -21,24 +21,43 @@ class SyncOrderStatuses extends Command
             // Получаем данные из Google Sheets
             $ordersData = $sheetsService->getOrders();
             
+            $updatedCount = 0;
+            $processedCount = 0;
+
+            $headers = array_map('trim', $ordersData[0]);
+            // Создаем mapping колонок
+            $columnMapping = [];
+            foreach ($headers as $index => $header) {
+                $columnMapping[$header] = $index;
+            }
+            
+            // Проверяем обязательные колонки
+            $requiredColumns = ['№ заказа', 'Старый статус'];
+            $missingColumns = array_diff($requiredColumns, array_keys($columnMapping));
+
+            if (!empty($missingColumns)) {
+                $message = "Таблица не содержит обязательных колонок: " . implode(', ', $missingColumns);
+                Log::error($message, [
+                    'headers' => $headers, 
+                    'available_columns' => array_keys($columnMapping),
+                    'required_columns' => $requiredColumns
+                ]);
+                return 1;
+            }
+
             // Пропускаем заголовок (первая строка)
             $ordersData = $ordersData->slice(1);
-            
+
             $updatedCount = 0;
             $processedCount = 0;
             
             foreach ($ordersData as $index => $row) {
                 $rowNumber = $index + 1; // +1 для пропуска заголовка
                 $processedCount++;
-                
-                if (count($row) < 4) {
-                    $message = "Пропускаем строку {$rowNumber}: недостаточно данных";
-                    Log::warning($message, ['row' => $row, 'row_number' => $rowNumber]);
-                    continue;
-                }
-                
-                $orderNumber = $row[0] ?? null; // Столбец A - № заказа
-                $oldStatus = $row[3] ?? null;   // Столбец D - Старый статус
+
+                // Получаем данные по названиям колонок
+                $orderNumber = trim($row[$columnMapping['№ заказа']] ?? ''); // Столбец A - № заказа
+                $oldStatus = trim($row[$columnMapping['Старый статус']] ?? '');  // Столбец D - Старый статус
                 
                 if (empty($orderNumber)) {
                     $message = "Пропускаем строку {$rowNumber}: отсутствует номер заказа";
@@ -68,31 +87,30 @@ class SyncOrderStatuses extends Command
                     continue;
                 }
                 
-                if ($order->status !== $oldStatus) {
-                    try {
-                        // Обновляем статус в Google Sheets
-                        $sheetsService->updateOrderStatus($rowNumber, $order->status);
-                        $updatedCount++;
-                        
-                        $message = "Обновлен статус заказа {$orderNumber}: {$oldStatus} -> {$order->status}";
-                        Log::info($message, [
-                            'order_number' => $orderNumber,
-                            'old_status' => $oldStatus,
-                            'new_status' => $order->status,
-                            'row_number' => $rowNumber
-                        ]);
-                        
-                    } catch (\Exception $e) {
-                        $errorMessage = "Ошибка при обновлении статуса заказа {$orderNumber}";
-                        Log::error($errorMessage, [
-                            'exception' => $e->getMessage(),
-                            'order_number' => $orderNumber,
-                            'row_number' => $rowNumber,
-                            'old_status' => $oldStatus,
-                            'new_status' => $order->status
-                        ]);
-                    }
+                try {
+                    // Обновляем статус в Google Sheets
+                    $sheetsService->updateOrderStatus($rowNumber, $order->status);
+                    $updatedCount++;
+                    
+                    $message = "Обновлен статус заказа {$orderNumber}: {$oldStatus} -> {$order->status}";
+                    Log::info($message, [
+                        'order_number' => $orderNumber,
+                        'old_status' => $oldStatus,
+                        'new_status' => $order->status,
+                        'row_number' => $rowNumber
+                    ]);
+                    
+                } catch (\Exception $e) {
+                    $errorMessage = "Ошибка при обновлении статуса заказа {$orderNumber}";
+                    Log::error($errorMessage, [
+                        'exception' => $e->getMessage(),
+                        'order_number' => $orderNumber,
+                        'row_number' => $rowNumber,
+                        'old_status' => $oldStatus,
+                        'new_status' => $order->status
+                    ]);
                 }
+                
             }
             
             $successMessage = "Синхронизация завершена. Обработано {$processedCount} строк, обновлено {$updatedCount} записей.";
